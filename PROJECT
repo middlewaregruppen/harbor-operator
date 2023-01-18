@@ -1,0 +1,19 @@
+domain: mdlwr.com
+layout:
+- go.kubebuilder.io/v3
+plugins:
+  manifests.sdk.operatorframework.io/v2: {}
+  scorecard.sdk.operatorframework.io/v2: {}
+projectName: harbor-operator
+repo: github.com/middlewaregruppen/harbor-operator
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mdlwr.com
+  group: harbor
+  kind: Project
+  path: github.com/middlewaregruppen/harbor-operator/api/v1alpha1
+  version: v1alpha1
+version: "3"
