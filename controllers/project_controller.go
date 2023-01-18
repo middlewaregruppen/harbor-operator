@@ -18,25 +18,39 @@ package controllers
 
 import (
 	"context"
-	//"crypto/tls"
-	"fmt"
-	"k8s.io/apimachinery/pkg/runtime"
-	//"net/http"
-	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
+	"crypto/tls"
 	"net/url"
+	//"crypto/tls"
+	//"fmt"
+	oruntime "github.com/go-openapi/runtime"
+	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
+	"k8s.io/apimachinery/pkg/runtime"
+	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-	//oclient "github.com/go-openapi/runtime/client"
-	"github.com/goharbor/go-client/pkg/harbor"
-	//hclient "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
+	//"github.com/goharbor/go-client/pkg/harbor"
+	oclient "github.com/go-openapi/runtime/client"
+	hclient "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
+	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
+	"k8s.io/apimachinery/pkg/api/errors"
 )
 
 // ProjectReconciler reconciles a Project object
 type ProjectReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
+	// clientSet is the Harbor ClientSet
+	harborclient *HarborClient
+}
+
+type HarborClient struct {
+	//Transport http.RoundTripper
+	Transport oruntime.ClientTransport
+	API       *hclient.HarborAPI
+	URL       *url.URL
+	AuthInfo  oruntime.ClientAuthInfoWriter
 }
 
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
@@ -55,62 +69,110 @@ type ProjectReconciler struct {
 func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
-	l.Info("Parsing URL")
-	u, err := url.Parse("https://harbor-portal:31443")
-	if err != nil {
-		l.Error(err, "Couldn't parse URL")
-		return ctrl.Result{}, err
+	proj := &harborv1alpha1.Project{}
+	err := r.Get(ctx, req.NamespacedName, proj)
+	if err != nil && errors.IsNotFound(err) {
+		l.Error(err, "couldn't get project")
+		return ctrl.Result{}, nil
 	}
 
-	// tr := &http.Transport{
-	// 	TLSClientConfig: &tls.Config{
-	// 		InsecureSkipVerify: true,
-	// 	},
+	//v2client := r.harborclient.API
+	params := &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name}
+	result, err := transport.Submit(&oruntime.ClientOperation{
+		ID:                 "headProject",
+		Method:             "HEAD",
+		PathPattern:        "/projects",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http", "https"},
+		Params:             params,
+		Reader:             &project.HeadProjectReader{},
+		AuthInfo:           r.harborclient.AuthInfo,
+		Context:            ctx,
+		Client:             params.HTTPClient,
+	})
+
+	// ok, err := v2client.Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
+	// if err != nil {
+	// 	l.Error(err, "couldn't head project")
 	// }
 
-	// auth := oclient.BasicAuth("amir", "amir")
-
-	// TODO(user): your logic here
-	// c := hclient.Config{
-	// 	URL:       u,
-	// 	Transport: tr,
-	// 	AuthInfo:  auth,
-	// }
-	c := &harbor.ClientSetConfig{
-		URL:      u.String(),
-		Insecure: true,
-		Username: "admin",
-		Password: "Harbor12345",
+	isPublic := true
+	if proj.Spec.IsPrivate {
+		isPublic = false
+	}
+	projectReq := &models.ProjectReq{
+		ProjectName: proj.ObjectMeta.Name,
+		Public:      &isPublic,
+		//RegistryID: proj.Spec.Registry,
 	}
 
-	l.Info("Setting up clientset")
-	cs, err := harbor.NewClientSet(c)
-	if err != nil {
-		l.Error(err, "Couldn't create clientset")
-		return ctrl.Result{}, err
-	}
-
-	v2client := cs.V2()
-	l.Info(fmt.Sprintf("Getting Project client %+v", v2client))
-	if v2client.Project != nil {
-		projectOK, err := v2client.Project.ListProjects(ctx, &project.ListProjectsParams{})
+	// Project exists
+	if ok.IsCode(http.StatusOK) {
+		updateParams := &project.UpdateProjectParams{
+			Project:         projectReq,
+			ProjectNameOrID: proj.ObjectMeta.Name,
+		}
+		_, err = v2client.Project.UpdateProject(ctx, updateParams)
 		if err != nil {
-			l.Error(err, "Couldn't list projects")
+			l.Error(err, "couldn't update project")
 			return ctrl.Result{}, err
 		}
-		l.Info(fmt.Sprintf("Got %d projects", projectOK.XTotalCount))
-		for _, p := range projectOK.Payload {
-			l.Info(fmt.Sprintf("Name: %s", p.Name))
+	}
+
+	// Project is not found
+	if !ok.IsSuccess() {
+		createParams := &project.CreateProjectParams{
+			Project: projectReq,
 		}
-	} else {
-		l.Info("Couln't get OK")
+		_, err = v2client.Project.CreateProject(ctx, createParams)
+		if err != nil {
+			l.Error(err, "couldn't create project")
+			return ctrl.Result{}, err
+		}
 	}
 
 	return ctrl.Result{}, nil
 }
 
+func (h *HarborClient) ProjectNotFound(ctx context.Context, proj *harborv1alpha1.Project) (bool, error) {
+	transport := oclient.New(h.URL.Hostname(), h.URL.EscapedPath(), []string{"http", "https"})
+
+	params := &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name}
+	result, err := transport.Submit(&oruntime.ClientOperation{
+		ID:                 "headProject",
+		Method:             "HEAD",
+		PathPattern:        "/projects",
+		ProducesMediaTypes: []string{"application/json"},
+		ConsumesMediaTypes: []string{"application/json"},
+		Schemes:            []string{"http", "https"},
+		Params:             params,
+		Reader:             &project.HeadProjectReader{},
+		AuthInfo:           h.AuthInfo,
+		Context:            ctx,
+		Client:             params.HTTPClient,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result.(*project.HeadProjectNotFound), nil
+
+}
+
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, harborclient *HarborClient) error {
+	r.harborclient = harborclient
+	c := hclient.Config{
+		URL:      harborclient.URL,
+		AuthInfo: harborclient.AuthInfo,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: true,
+			},
+		},
+	}
+	api := hclient.New(c)
+	r.harborclient.API = api
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Project{}).
 		Complete(r)
