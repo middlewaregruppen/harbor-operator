@@ -18,19 +18,17 @@ package controllers
 
 import (
 	"context"
-	"crypto/tls"
-	"net/url"
+
 	//"crypto/tls"
-	//"fmt"
-	oruntime "github.com/go-openapi/runtime"
+
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
 	"k8s.io/apimachinery/pkg/runtime"
-	"net/http"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
 	//"github.com/goharbor/go-client/pkg/harbor"
-	oclient "github.com/go-openapi/runtime/client"
+
 	hclient "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
@@ -42,15 +40,7 @@ type ProjectReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	// clientSet is the Harbor ClientSet
-	harborclient *HarborClient
-}
-
-type HarborClient struct {
-	//Transport http.RoundTripper
-	Transport oruntime.ClientTransport
-	API       *hclient.HarborAPI
-	URL       *url.URL
-	AuthInfo  oruntime.ClientAuthInfoWriter
+	harborAPI *hclient.HarborAPI
 }
 
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
@@ -76,27 +66,6 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	//v2client := r.harborclient.API
-	params := &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name}
-	result, err := transport.Submit(&oruntime.ClientOperation{
-		ID:                 "headProject",
-		Method:             "HEAD",
-		PathPattern:        "/projects",
-		ProducesMediaTypes: []string{"application/json"},
-		ConsumesMediaTypes: []string{"application/json"},
-		Schemes:            []string{"http", "https"},
-		Params:             params,
-		Reader:             &project.HeadProjectReader{},
-		AuthInfo:           r.harborclient.AuthInfo,
-		Context:            ctx,
-		Client:             params.HTTPClient,
-	})
-
-	// ok, err := v2client.Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
-	// if err != nil {
-	// 	l.Error(err, "couldn't head project")
-	// }
-
 	isPublic := true
 	if proj.Spec.IsPrivate {
 		isPublic = false
@@ -107,72 +76,43 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		//RegistryID: proj.Spec.Registry,
 	}
 
-	// Project exists
-	if ok.IsCode(http.StatusOK) {
-		updateParams := &project.UpdateProjectParams{
-			Project:         projectReq,
-			ProjectNameOrID: proj.ObjectMeta.Name,
+	v2client := r.harborAPI
+	_, err = v2client.Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
+	if err != nil {
+		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
+			l.Error(err, "couldn't head project")
+
+			createParams := &project.CreateProjectParams{
+				Project: projectReq,
+			}
+			_, err = v2client.Project.CreateProject(ctx, createParams)
+			if err != nil {
+				l.Error(err, "couldn't create project")
+				return ctrl.Result{}, err
+			}
+
+			return ctrl.Result{}, nil
 		}
-		_, err = v2client.Project.UpdateProject(ctx, updateParams)
-		if err != nil {
-			l.Error(err, "couldn't update project")
-			return ctrl.Result{}, err
-		}
+		l.Error(err, "couldn't head project")
+		return ctrl.Result{}, err
 	}
 
-	// Project is not found
-	if !ok.IsSuccess() {
-		createParams := &project.CreateProjectParams{
-			Project: projectReq,
-		}
-		_, err = v2client.Project.CreateProject(ctx, createParams)
-		if err != nil {
-			l.Error(err, "couldn't create project")
-			return ctrl.Result{}, err
-		}
+	updateParams := &project.UpdateProjectParams{
+		Project:         projectReq,
+		ProjectNameOrID: proj.ObjectMeta.Name,
+	}
+	_, err = v2client.Project.UpdateProject(ctx, updateParams)
+	if err != nil {
+		l.Error(err, "couldn't update project")
+		return ctrl.Result{}, err
 	}
 
 	return ctrl.Result{}, nil
 }
 
-func (h *HarborClient) ProjectNotFound(ctx context.Context, proj *harborv1alpha1.Project) (bool, error) {
-	transport := oclient.New(h.URL.Hostname(), h.URL.EscapedPath(), []string{"http", "https"})
-
-	params := &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name}
-	result, err := transport.Submit(&oruntime.ClientOperation{
-		ID:                 "headProject",
-		Method:             "HEAD",
-		PathPattern:        "/projects",
-		ProducesMediaTypes: []string{"application/json"},
-		ConsumesMediaTypes: []string{"application/json"},
-		Schemes:            []string{"http", "https"},
-		Params:             params,
-		Reader:             &project.HeadProjectReader{},
-		AuthInfo:           h.AuthInfo,
-		Context:            ctx,
-		Client:             params.HTTPClient,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return result.(*project.HeadProjectNotFound), nil
-
-}
-
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, harborclient *HarborClient) error {
-	r.harborclient = harborclient
-	c := hclient.Config{
-		URL:      harborclient.URL,
-		AuthInfo: harborclient.AuthInfo,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				InsecureSkipVerify: true,
-			},
-		},
-	}
-	api := hclient.New(c)
-	r.harborclient.API = api
+func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, harborAPI *hclient.HarborAPI) error {
+	r.harborAPI = harborAPI
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Project{}).
 		Complete(r)
