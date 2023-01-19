@@ -18,9 +18,11 @@ package controllers
 
 import (
 	"context"
+	"fmt"
 
 	//"crypto/tls"
 
+	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -29,7 +31,6 @@ import (
 
 	//"github.com/goharbor/go-client/pkg/harbor"
 
-	hclient "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
 	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -40,7 +41,7 @@ type ProjectReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	// clientSet is the Harbor ClientSet
-	harborAPI *hclient.HarborAPI
+	clientset *harbor.ClientSet
 }
 
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
@@ -72,15 +73,16 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	projectReq := &models.ProjectReq{
 		ProjectName: proj.ObjectMeta.Name,
-		Public:      &isPublic,
-		//RegistryID: proj.Spec.Registry,
+		Metadata: &models.ProjectMetadata{
+			Public: boolToString(isPublic),
+		},
 	}
 
-	v2client := r.harborAPI
-	_, err = v2client.Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
+	v2client := r.clientset.V2()
+	ok, err := v2client.Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
 	if err != nil {
 		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
-			l.Error(err, "couldn't head project")
+			l.Error(err, "project not found")
 
 			createParams := &project.CreateProjectParams{
 				Project: projectReq,
@@ -96,11 +98,19 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		l.Error(err, "couldn't head project")
 		return ctrl.Result{}, err
 	}
+	l.Info(fmt.Sprintf("Name: %+v", ok))
 
+	// Update
+	_, err = v2client.Project.GetProject(ctx, &project.GetProjectParams{ProjectNameOrID: proj.ObjectMeta.Name})
+	if err != nil {
+		l.Error(err, "couldn't get project")
+		return ctrl.Result{}, err
+	}
 	updateParams := &project.UpdateProjectParams{
 		Project:         projectReq,
 		ProjectNameOrID: proj.ObjectMeta.Name,
 	}
+	l.Info(fmt.Sprintf("Update Params %+v Req: %+v Public: %t", updateParams, projectReq, isPublic))
 	_, err = v2client.Project.UpdateProject(ctx, updateParams)
 	if err != nil {
 		l.Error(err, "couldn't update project")
@@ -111,9 +121,24 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, harborAPI *hclient.HarborAPI) error {
-	r.harborAPI = harborAPI
+func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, clientset *harbor.ClientSet) error {
+	r.clientset = clientset
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Project{}).
 		Complete(r)
+}
+
+func ptrBool(b bool) *bool {
+	return &b
+}
+
+func ptrInt64(b int64) *int64 {
+	return &b
+}
+
+func boolToString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }

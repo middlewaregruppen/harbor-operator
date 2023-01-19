@@ -18,11 +18,11 @@ package main
 
 import (
 	//"crypto/tls"
-	"crypto/tls"
+
 	"flag"
 
 	//"net/http"
-	"net/http"
+
 	"net/url"
 	"os"
 
@@ -30,9 +30,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
-	oclient "github.com/go-openapi/runtime/client"
-	//"github.com/goharbor/go-client/pkg/harbor"
-	hclient "github.com/goharbor/go-client/pkg/sdk/v2.0/client"
+	"github.com/goharbor/go-client/pkg/harbor"
 	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
 	"github.com/middlewaregruppen/harbor-operator/controllers"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -109,22 +107,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-		},
+	// tr := &http.Transport{
+	// 	TLSClientConfig: &tls.Config{
+	// 		InsecureSkipVerify: true,
+	// 	},
+	// }
+
+	// c := hclient.Config{
+	// 	URL:       u,
+	// 	Transport: tr,
+	// 	AuthInfo:  oclient.BasicAuth(harborUser, harborPass),
+	// }
+
+	c := &harbor.ClientSetConfig{
+		URL:      u.String(),
+		Insecure: true,
+		Username: harborUser,
+		Password: harborPass,
 	}
 
-	c := hclient.Config{
-		URL:       u,
-		Transport: tr,
-		AuthInfo:  oclient.BasicAuth(harborUser, harborPass),
+	cs, err := harbor.NewClientSet(c)
+	if err != nil {
+		setupLog.Error(err, "Couldn't create clientset")
+		os.Exit(1)
 	}
 
 	if err = (&controllers.ProjectReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr, hclient.New(c)); err != nil {
+	}).SetupWithManager(mgr, cs); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "Project")
 		os.Exit(1)
 	}
