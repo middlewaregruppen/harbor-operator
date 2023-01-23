@@ -65,6 +65,7 @@ func (r *ProjectReconciler) projectIsNotFound(ctx context.Context, key string) b
 		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
 			return true
 		}
+		return true
 	}
 	return false
 }
@@ -91,7 +92,7 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	err := r.Get(ctx, req.NamespacedName, proj)
 	if err != nil {
 		if errors.IsNotFound(err) {
-			l.Info("Project resource not found. It has probably been deleted")
+			l.Info("project resource not found. It has probably been deleted")
 			return ctrl.Result{}, nil
 		}
 		l.Error(err, "failed to get Project")
@@ -99,6 +100,20 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 
 	// Check status field here
+	// Let's just set the status as Unknown when no status are available
+	if proj.Status.Conditions == nil || len(proj.Status.Conditions) == 0 {
+		meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+		if err = r.Status().Update(ctx, proj); err != nil {
+			l.Error(err, "failed to update Project status")
+			return ctrl.Result{}, err
+		}
+
+		// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
+		if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
+			l.Error(err, "failed to re-fetch Project")
+			return ctrl.Result{}, err
+		}
+	}
 
 	// Add finalizers that will be handled later during delete events
 	if !controllerutil.ContainsFinalizer(proj, projectFinalizers) {
@@ -130,6 +145,20 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 
 			// TODO: run finalizers here
+			_, err = r.clientset.V2().Project.DeleteProject(ctx, &project.DeleteProjectParams{ProjectNameOrID: proj.ObjectMeta.Name})
+			if nil != err {
+				l.Error(err, "failed to delete project from Harbor")
+				// Update the status field of the resource in case we get errors creating the project
+				meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
+					Status: metav1.ConditionFalse, Reason: "Reconciling",
+					Message: fmt.Sprintf("Failed to delete Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
+
+				if err := r.Status().Update(ctx, proj); err != nil {
+					l.Error(err, "failed to update Project status")
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, err
+			}
 
 			// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
 			if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
@@ -175,6 +204,7 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if r.projectIsNotFound(ctx, proj.Name) {
 		_, err = r.clientset.V2().Project.CreateProject(ctx, &project.CreateProjectParams{Project: projectReq})
 		if err != nil {
+			l.Error(err, "Failed creating")
 			// Update the status field of the resource in case we get errors creating the project
 			meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
 				Status: metav1.ConditionFalse, Reason: "Reconciling",
@@ -186,32 +216,32 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 			}
 			return ctrl.Result{}, err
 		}
+	}
 
-		// Check if the actual project in Harbor exists. If so then update the existing one
-		if !r.projectIsNotFound(ctx, proj.Name) {
-			// _, err = r.clientset.V2().Project.GetProject(ctx, &project.GetProjectParams{ProjectNameOrID: proj.Name})
-			// if err != nil {
-			// 	l.Error(err, "couldn't get project")
-			// 	return ctrl.Result{}, err
-			// }
-			_, err = r.clientset.V2().Project.UpdateProject(ctx, &project.UpdateProjectParams{
-				Project:         projectReq,
-				ProjectNameOrID: proj.ObjectMeta.Name,
-			})
-			if err != nil {
-				// Update the status field of the resource in case we get errors creating the project
-				meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
-					Status: metav1.ConditionFalse, Reason: "Reconciling",
-					Message: fmt.Sprintf("Failed to update Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
+	// Check if the actual project in Harbor exists. If so then update the existing one
+	if !r.projectIsNotFound(ctx, proj.ObjectMeta.Name) {
+		// _, err = r.clientset.V2().Project.GetProject(ctx, &project.GetProjectParams{ProjectNameOrID: proj.Name})
+		// if err != nil {
+		// 	l.Error(err, "couldn't get project")
+		// 	return ctrl.Result{}, err
+		// }
+		_, err = r.clientset.V2().Project.UpdateProject(ctx, &project.UpdateProjectParams{
+			Project:         projectReq,
+			ProjectNameOrID: proj.ObjectMeta.Name,
+		})
+		if err != nil {
+			l.Error(err, "error updating project...")
+			// Update the status field of the resource in case we get errors creating the project
+			meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
+				Status: metav1.ConditionFalse, Reason: "Reconciling",
+				Message: fmt.Sprintf("Failed to update Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
 
-				if err := r.Status().Update(ctx, proj); err != nil {
-					l.Error(err, "failed to update Project status")
-					return ctrl.Result{}, err
-				}
+			if err := r.Status().Update(ctx, proj); err != nil {
+				l.Error(err, "failed to update Project status")
 				return ctrl.Result{}, err
 			}
+			return ctrl.Result{}, err
 		}
-
 		// Deployment created successfully
 		// We will requeue the reconciliation so that we can ensure the state
 		// and move forward for the next operations
