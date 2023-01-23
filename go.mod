@@ -3,7 +3,11 @@ module github.com/middlewaregruppen/harbor-operator
 go 1.19
 
 require (
+	github.com/go-openapi/errors v0.20.1
 	github.com/go-openapi/runtime v0.21.0
+	github.com/go-openapi/strfmt v0.21.0
+	github.com/go-openapi/swag v0.19.15
+	github.com/go-openapi/validate v0.20.3
 	github.com/goharbor/go-client v0.26.2
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
@@ -32,14 +36,10 @@ require (
 	github.com/go-logr/logr v1.2.3 // indirect
 	github.com/go-logr/zapr v1.2.3 // indirect
 	github.com/go-openapi/analysis v0.20.1 // indirect
-	github.com/go-openapi/errors v0.20.1 // indirect
 	github.com/go-openapi/jsonpointer v0.19.5 // indirect
 	github.com/go-openapi/jsonreference v0.19.6 // indirect
 	github.com/go-openapi/loads v0.21.0 // indirect
 	github.com/go-openapi/spec v0.20.4 // indirect
-	github.com/go-openapi/strfmt v0.21.0 // indirect
-	github.com/go-openapi/swag v0.19.15 // indirect
-	github.com/go-openapi/validate v0.20.3 // indirect
 	github.com/go-stack/stack v1.8.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.2.0 // indirect
