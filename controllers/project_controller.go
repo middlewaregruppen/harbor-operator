@@ -20,32 +20,15 @@ import (
 	"context"
 	"fmt"
 
-	//"crypto/tls"
-
 	"github.com/goharbor/go-client/pkg/harbor"
-	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
+	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
+	"github.com/middlewaregruppen/harbor-operator/pkg/ensure"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
-
-	//"github.com/goharbor/go-client/pkg/harbor"
-
-	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-)
-
-const projectFinalizers = "harbor.mdlwr.com/finalizer"
-
-// Definitions to manage status conditions
-const (
-	// typeAvailable represents the status of the Deployment reconciliation
-	typeAvailable = "Available"
-	// typeDegraded represents the status used when the custom resource is deleted and the finalizer operations are must to occur.
-	typeDegraded = "Degraded"
 )
 
 // ProjectReconciler reconciles a Project object
@@ -54,17 +37,6 @@ type ProjectReconciler struct {
 	Scheme *runtime.Scheme
 	// clientSet is the Harbor ClientSet
 	clientset *harbor.ClientSet
-}
-
-func (r *ProjectReconciler) projectIsNotFound(ctx context.Context, key string) bool {
-	_, err := r.clientset.V2().Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: key})
-	if err != nil {
-		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
-			return true
-		}
-		return true
-	}
-	return false
 }
 
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
@@ -86,198 +58,52 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// Fetch Project - This ensures that the cluster has resources of type Project.
 	// Stops reconciliation if not found, for example if the CRD's has not been applied
 	proj := &harborv1alpha1.Project{}
-	err := r.Get(ctx, req.NamespacedName, proj)
-	if err != nil {
-		if errors.IsNotFound(err) {
-			l.Info("project resource not found. It has probably been deleted")
-			return ctrl.Result{}, err
-		}
-		l.Error(err, "failed to get Project")
-		return ctrl.Result{}, err
+	if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	e, err := NewProjectEnsurer(r.Client, r.clientset, req, proj)
+	e, err := ensure.NewProjectEnsurer(r.Client, r.clientset, req, proj)
 	if err != nil {
 		l.Error(err, "failed setting up projectensurer")
 		return ctrl.Result{}, err
 	}
 
-	// Check status field here
-	// Let's just set the status as Unknown when no status are available
-	// if proj.Status.Conditions == nil || len(proj.Status.Conditions) == 0 {
-	// 	meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
-	// 	if err = r.Status().Update(ctx, proj); err != nil {
-	// 		l.Error(err, "failed to update Project status")
-	// 		return ctrl.Result{}, err
-	// 	}
-
-	// 	// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
-	// 	if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
-	// 		l.Error(err, "failed to re-fetch Project")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
-	err = e.Setup(ctx)
-	if err != nil {
-		l.Error(err, "failed setup")
-		return ctrl.Result{Requeue: true}, err
-	}
-
-	// Add finalizers that will be handled later during delete events
-	// if !controllerutil.ContainsFinalizer(proj, projectFinalizers) {
-	// 	if ok := controllerutil.AddFinalizer(proj, projectFinalizers); !ok {
-	// 		l.Error(err, "failed to add finalizer into the custom resource")
-	// 		return ctrl.Result{Requeue: true}, nil
-	// 	}
-	// 	if err = r.Update(ctx, proj); err != nil {
-	// 		l.Error(err, "failed to update custom resource to add finalizer")
-	// 		return ctrl.Result{}, err
-	// 	}
-	// }
-
-	// Check if the Project is marked to be deleted, which is
-	// indicated by the deletion timestamp on the resource.
-	// if proj.GetDeletionTimestamp() != nil {
-	// 	// Perform finalizers before deleting resource from cluster
-	// 	if controllerutil.ContainsFinalizer(proj, projectFinalizers) {
-
-	// 		// Add Degraded status to begin the process of terminating resources
-	// 		meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeDegraded,
-	// 			Status: metav1.ConditionUnknown, Reason: "Finalizing",
-	// 			Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", proj.Name)})
-
-	// 		// Update the resource with updated status
-	// 		if err := r.Status().Update(ctx, proj); err != nil {
-	// 			l.Error(err, "failed to update Project status")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		// TODO: run finalizers here
-
-	// 		// Delete project from Harbor after finalizers have been carried out
-	// 		_, err = r.clientset.V2().Project.DeleteProject(ctx, &project.DeleteProjectParams{ProjectNameOrID: proj.ObjectMeta.Name})
-	// 		if nil != err {
-	// 			l.Error(err, "failed to delete project from Harbor")
-	// 			// Update the status field of the resource in case we get errors creating the project
-	// 			meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
-	// 				Status: metav1.ConditionFalse, Reason: "Reconciling",
-	// 				Message: fmt.Sprintf("Failed to delete Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
-
-	// 			if err := r.Status().Update(ctx, proj); err != nil {
-	// 				l.Error(err, "failed to update Project status")
-	// 				return ctrl.Result{}, err
-	// 			}
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
-	// 		if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
-	// 			l.Error(err, "failed to re-fetch project")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeDegraded,
-	// 			Status: metav1.ConditionTrue, Reason: "Finalizing",
-	// 			Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", proj.Name)})
-
-	// 		if err := r.Status().Update(ctx, proj); err != nil {
-	// 			l.Error(err, "failed to update Project status")
-	// 			return ctrl.Result{}, err
-	// 		}
-
-	// 		// Remove finalizers and update status field of the resource
-	// 		if ok := controllerutil.RemoveFinalizer(proj, projectFinalizers); !ok {
-	// 			l.Error(err, "failed to remove finalizer for Project")
-	// 			return ctrl.Result{Requeue: true}, nil
-	// 		}
-	// 		if err := r.Update(ctx, proj); err != nil {
-	// 			l.Error(err, "failed to remove finalizer for Project")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 	}
-	// 	return ctrl.Result{}, nil
-	// }
-
-	err = e.Finalize(ctx)
-	if err != nil {
-		l.Error(err, "failed finalizing")
+	// Adds finalizers and update our resource with a status field
+	//if e.proj.Status.Conditions == nil || len(e.proj.Status.Conditions) == 0 {
+	l.Info("Setting up resource")
+	if _, err = e.Setup(ctx); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	// // Define a new project request that we use to update or create new projects in Harbor
-	// isPublic := true
-	// if proj.Spec.IsPrivate {
-	// 	isPublic = false
-	// }
-	// projectReq := &models.ProjectReq{
-	// 	ProjectName: proj.ObjectMeta.Name,
-	// 	Metadata: &models.ProjectMetadata{
-	// 		Public: boolToString(isPublic),
-	// 	},
-	// }
+	// Check if the Project is marked to be deleted, which is
+	// indicated by the deletion timestamp on the resource.
+	if proj.GetDeletionTimestamp() != nil {
+		l.Info("Handling delete of resource")
+		return e.HandleDelete(ctx)
+	}
 
-	// // Check if the actual Project in Harbor exists. If not create a new one
-	// if r.projectIsNotFound(ctx, proj.Name) {
-	// 	_, err = r.clientset.V2().Project.CreateProject(ctx, &project.CreateProjectParams{Project: projectReq})
-	// 	if err != nil {
-	// 		l.Error(err, "Failed creating")
-	// 		// Update the status field of the resource in case we get errors creating the project
-	// 		meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
-	// 			Status: metav1.ConditionFalse, Reason: "Reconciling",
-	// 			Message: fmt.Sprintf("Failed to create Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
+	// If project is not found in Harbor, then create
+	if e.ProjectNotFound(ctx, proj.Name) {
+		l.Info("Handling create of resource")
+		return e.HandleCreate(ctx)
+	}
 
-	// 		if err := r.Status().Update(ctx, proj); err != nil {
-	// 			l.Error(err, "failed to update Project status")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	// Project updated successfully. Requeue and check state again
-	// 	//return ctrl.Result{RequeueAfter: time.Minute}, nil
-	// }
-
-	// // Check if the actual project in Harbor exists. If so then update the existing one
-	// if !r.projectIsNotFound(ctx, proj.ObjectMeta.Name) {
-	// 	// _, err = r.clientset.V2().Project.GetProject(ctx, &project.GetProjectParams{ProjectNameOrID: proj.Name})
-	// 	// if err != nil {
-	// 	// 	l.Error(err, "couldn't get project")
-	// 	// 	return ctrl.Result{}, err
-	// 	// }
-	// 	_, err = r.clientset.V2().Project.UpdateProject(ctx, &project.UpdateProjectParams{
-	// 		Project:         projectReq,
-	// 		ProjectNameOrID: proj.ObjectMeta.Name,
-	// 	})
-	// 	if err != nil {
-	// 		l.Error(err, "error updating project...")
-	// 		// Update the status field of the resource in case we get errors creating the project
-	// 		meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
-	// 			Status: metav1.ConditionFalse, Reason: "Reconciling",
-	// 			Message: fmt.Sprintf("Failed to update Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
-
-	// 		if err := r.Status().Update(ctx, proj); err != nil {
-	// 			l.Error(err, "failed to update Project status")
-	// 			return ctrl.Result{}, err
-	// 		}
-	// 		return ctrl.Result{}, err
-	// 	}
-	// 	// Project updated successfully. Requeue and check state again
-	// 	//return ctrl.Result{RequeueAfter: time.Minute}, nil
-	// }
-
-	err = e.Ensure(ctx)
-	if err != nil {
-		l.Error(err, "failed ensuring")
+	// If we got this far it means that project exists and we can update project in Harbor instead.,
+	// Note that we always update, overwriting existing project with the state of that in the CRD.
+	// We might want to consider only updating when there are changes.
+	l.Info("Handling update of resource")
+	if _, err = e.HandleUpdate(ctx); err != nil {
 		return ctrl.Result{}, err
 	}
 
 	// The following implementation will update the status
-	meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: typeAvailable,
+	// TODO: We might want to consider putting this into the Ensurer interface
+	meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: ensure.ProjectAvailable,
 		Status: metav1.ConditionTrue, Reason: "Reconciling",
 		Message: fmt.Sprintf("Harbor Project for custom resource (%s) created successfully", proj.Name)})
 
 	if err := r.Status().Update(ctx, proj); err != nil {
-		l.Error(err, "failed to update Memcached status")
+		l.Error(err, "failed to update Project status")
 		return ctrl.Result{}, err
 	}
 
@@ -290,19 +116,4 @@ func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, clientset *harbor
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Project{}).
 		Complete(r)
-}
-
-func ptrBool(b bool) *bool {
-	return &b
-}
-
-func ptrInt64(b int64) *int64 {
-	return &b
-}
-
-func boolToString(b bool) string {
-	if b {
-		return "true"
-	}
-	return "false"
 }
