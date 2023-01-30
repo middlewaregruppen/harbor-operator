@@ -76,6 +76,7 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	// Fetch credentials from secrets through the secretRef
+	// TODO: Ignore not found errors here
 	sec := &corev1.Secret{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: hs.Namespace, Name: hs.Spec.External.SecretRef.Name}, sec); err != nil {
 		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", hs.Namespace, hs.Spec.External.SecretRef.Name, err))
