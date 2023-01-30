@@ -63,7 +63,7 @@ func main() {
 	var harborPass string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.StringVar(&harborURL, "harbor-url", "https://harbor:31443", "The address the Harbor server")
+	flag.StringVar(&harborURL, "harbor-url", "https://harbor-portal:31443", "The address the Harbor server")
 	flag.StringVar(&harborUser, "harbor-username", "admin", "Username to the Harbor server")
 	flag.StringVar(&harborPass, "harbor-password", "Harbor12345", "Passworrd to the Harbor server")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,

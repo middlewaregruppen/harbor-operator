@@ -1,8 +1,0 @@
-apiVersion: harbor.mdlwr.com/v1alpha1
-kind: Project
-metadata:
-  name: project-03
-  namespace: test-operator
-spec:
-  proxyCache:
-    registry: github-ghcr
