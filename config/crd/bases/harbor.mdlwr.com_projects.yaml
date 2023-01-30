@@ -55,18 +55,19 @@ spec:
                   spec:
                     description: HarborServiceSpec defines the desired state of HarborService
                     properties:
-                      external_backend:
+                      externalBackend:
                         description: Foo is an example field of HarborService. Edit
                           harborservice_types.go to remove/update
                         properties:
-                          password:
-                            type: string
+                          secretRef:
+                            properties:
+                              name:
+                                type: string
+                            type: object
                           url:
                             type: string
-                          username:
-                            type: string
                         type: object
-                      internal_backend:
+                      internalBackend:
                         properties:
                           name:
                             type: string
@@ -84,6 +85,11 @@ spec:
                                   setting with "Name".
                                 format: int32
                                 type: integer
+                            type: object
+                          secretRef:
+                            properties:
+                              name:
+                                type: string
                             type: object
                         required:
                         - name

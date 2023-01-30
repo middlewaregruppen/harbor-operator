@@ -30,19 +30,23 @@ type HarborServiceSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of HarborService. Edit harborservice_types.go to remove/update
-	External ExternalBackend `json:"external_backend,omitempty"`
-	Internal InternalBackend `json:"internal_backend,omitempty"`
+	External ExternalBackend `json:"externalBackend,omitempty"`
+	Internal InternalBackend `json:"internalBackend,omitempty"`
 }
 
 type ExternalBackend struct {
-	URL      string `json:"url,omitempty"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	URL       string     `json:"url,omitempty"`
+	SecretRef *SecretRef `json:"secretRef,omitempty"`
+}
+
+type SecretRef struct {
+	Name string `json:"name,omitempty"`
 }
 
 type InternalBackend struct {
-	Name string                `json:"name"`
-	Port v1.ServiceBackendPort `json:"port,omitempty" protobuf:"bytes,2,opt,name=port"`
+	Name      string                `json:"name"`
+	Port      v1.ServiceBackendPort `json:"port,omitempty" protobuf:"bytes,2,opt,name=port"`
+	SecretRef *SecretRef            `json:"secretRef,omitempty"`
 }
 
 // HarborServiceStatus defines the observed state of HarborService

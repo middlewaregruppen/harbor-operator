@@ -143,7 +143,7 @@ func main() {
 	if err = (&controllers.HarborServiceReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr, cs); err != nil {
+	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "HarborService")
 		os.Exit(1)
 	}

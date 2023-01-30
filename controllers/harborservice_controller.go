@@ -18,20 +18,23 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/url"
 	"time"
 
+	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/health"
+	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	"github.com/goharbor/go-client/pkg/harbor"
-	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
 )
 
 // Definitions to manage status conditions
@@ -71,6 +74,33 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	if err := r.Get(ctx, req.NamespacedName, hs); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	// Fetch credentials from secrets through the secretRef
+	sec := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: hs.Namespace, Name: hs.Spec.External.SecretRef.Name}, sec); err != nil {
+		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", hs.Namespace, hs.Spec.External.SecretRef.Name, err))
+	}
+
+	// Parse the URL
+	u, err := url.Parse(hs.Spec.External.URL)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Setup Harbor clientset
+	c := &harbor.ClientSetConfig{
+		URL:      u.String(),
+		Insecure: true,
+		Username: string(sec.Data["username"]),
+		Password: string(sec.Data["password"]),
+	}
+
+	cs, err := harbor.NewClientSet(c)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.clientset = cs
 
 	// Check status field here
 	// Let's just set the status as Unknown when no status are available
@@ -169,8 +199,8 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *HarborServiceReconciler) SetupWithManager(mgr ctrl.Manager, clientset *harbor.ClientSet) error {
-	r.clientset = clientset
+func (r *HarborServiceReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	//r.clientset = clientset
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.HarborService{}).
 		Complete(r)
