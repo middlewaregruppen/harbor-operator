@@ -1,5 +1,5 @@
 # harbor-operator
-// TODO(user): Add simple overview of use/purpose
+Manage [Harbor](https://goharbor.io/) registries with Kubernetes
 
 ## Description
 // TODO(user): An in-depth paragraph about your project and overview of use
