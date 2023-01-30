@@ -8,6 +8,32 @@ rules:
 - apiGroups:
   - harbor.mdlwr.com
   resources:
+  - harborservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - harbor.mdlwr.com
+  resources:
+  - harborservices/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - harbor.mdlwr.com
+  resources:
+  - harborservices/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - harbor.mdlwr.com
+  resources:
   - projects
   verbs:
   - create

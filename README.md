@@ -1,3 +1,5 @@
+[![Go](https://github.com/middlewaregruppen/harbor-operator/actions/workflows/go.yaml/badge.svg?branch=master)](https://github.com/middlewaregruppen/harbor-operator/actions/workflows/go.yaml) [![Release](https://github.com/middlewaregruppen/harbor-operator/actions/workflows/release.yaml/badge.svg)](https://github.com/middlewaregruppen/harbor-operator/actions/workflows/release.yaml)
+
 # harbor-operator
 Manage [Harbor](https://goharbor.io/) registries with Kubernetes
 

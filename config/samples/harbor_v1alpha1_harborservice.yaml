@@ -1,0 +1,12 @@
+apiVersion: harbor.mdlwr.com/v1alpha1
+kind: HarborService
+metadata:
+  labels:
+    app.kubernetes.io/name: harborservice
+    app.kubernetes.io/instance: harborservice-sample
+    app.kubernetes.io/part-of: harbor-operator
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: harbor-operator
+  name: harborservice-sample
+spec:
+  # TODO(user): Add fields here

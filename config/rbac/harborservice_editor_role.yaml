@@ -1,0 +1,31 @@
+# permissions for end users to edit harborservices.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: harborservice-editor-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: harbor-operator
+    app.kubernetes.io/part-of: harbor-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: harborservice-editor-role
+rules:
+- apiGroups:
+  - harbor.mdlwr.com
+  resources:
+  - harborservices
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - harbor.mdlwr.com
+  resources:
+  - harborservices/status
+  verbs:
+  - get
