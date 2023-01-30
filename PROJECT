@@ -16,4 +16,13 @@ resources:
   kind: Project
   path: github.com/middlewaregruppen/harbor-operator/api/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: mdlwr.com
+  group: harbor
+  kind: HarborService
+  path: github.com/middlewaregruppen/harbor-operator/api/v1alpha1
+  version: v1alpha1
 version: "3"
