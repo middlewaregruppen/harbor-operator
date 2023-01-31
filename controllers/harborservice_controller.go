@@ -75,15 +75,31 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Don't do anything if no backends are configured
+	if hs.Spec.External == nil && hs.Spec.Internal == nil {
+		l.Info("No backends configured")
+		return ctrl.Result{}, nil
+	}
+
 	// Fetch credentials from secrets through the secretRef
 	// TODO: Ignore not found errors here
 	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: hs.Namespace, Name: hs.Spec.External.SecretRef.Name}, sec); err != nil {
-		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", hs.Namespace, hs.Spec.External.SecretRef.Name, err))
+	if err := r.Get(ctx, types.NamespacedName{Namespace: hs.Namespace, Name: hs.Spec.SecretRef.Name}, sec); err != nil {
+		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", hs.Namespace, hs.Spec.SecretRef.Name, err))
 	}
 
-	// Parse the URL
-	u, err := url.Parse(hs.Spec.External.URL)
+	var ustr string
+	// Use URL field in the external backend
+	if hs.Spec.External != nil {
+		ustr = fmt.Sprintf("%s://%s:%d", hs.Spec.Scheme, hs.Spec.External.Host, hs.Spec.External.Port)
+	}
+
+	// Use service to create an URL
+	if hs.Spec.Internal != nil {
+		ustr = fmt.Sprintf("%s://%s:%d", hs.Spec.Scheme, hs.Spec.Internal.Name, hs.Spec.Internal.Port.Number)
+	}
+
+	u, err := url.Parse(ustr)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -91,7 +107,7 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Setup Harbor clientset
 	c := &harbor.ClientSetConfig{
 		URL:      u.String(),
-		Insecure: true,
+		Insecure: hs.Spec.Insecure,
 		Username: string(sec.Data["username"]),
 		Password: string(sec.Data["password"]),
 	}

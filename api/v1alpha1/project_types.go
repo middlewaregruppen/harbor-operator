@@ -29,7 +29,7 @@ type ProjectSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 	IsPrivate      bool            `json:"isPrivate,omitempty"`
 	ProxyCacheSpec *ProxyCacheSpec `json:"proxyCache,omitempty"`
-	Harbor         *HarborService  `json:"harbor,omitempty"`
+	Harbor         string          `json:"harbor,omitempty"`
 }
 
 type ProxyCacheSpec struct {
