@@ -52,6 +52,42 @@ type HarborServiceReconciler struct {
 	clientset *harbor.ClientSet
 }
 
+func GetClientSet(ctx context.Context, c client.Client, h *harborv1alpha1.HarborService) (*harbor.ClientSet, error) {
+
+	// Fetch credentials from secrets through the secretRef
+	// TODO: Ignore not found errors here
+	sec := &corev1.Secret{}
+	if err := c.Get(ctx, types.NamespacedName{Namespace: h.Namespace, Name: h.Spec.SecretRef.Name}, sec); err != nil {
+		return nil, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", h.Namespace, h.Spec.SecretRef.Name, err))
+	}
+
+	var ustr string
+	// Use URL field in the external backend
+	if h.Spec.External != nil {
+		ustr = fmt.Sprintf("%s://%s:%d", h.Spec.Scheme, h.Spec.External.Host, h.Spec.External.Port)
+	}
+
+	// Use service to create an URL
+	if h.Spec.Internal != nil {
+		ustr = fmt.Sprintf("%s://%s:%d", h.Spec.Scheme, h.Spec.Internal.Name, h.Spec.Internal.Port.Number)
+	}
+
+	u, err := url.Parse(ustr)
+	if err != nil {
+		return nil, err
+	}
+
+	// Setup Harbor clientset
+	config := &harbor.ClientSetConfig{
+		URL:      u.String(),
+		Insecure: h.Spec.Insecure,
+		Username: string(sec.Data["username"]),
+		Password: string(sec.Data["password"]),
+	}
+
+	return harbor.NewClientSet(config)
+}
+
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborservices,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborservices/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborservices/finalizers,verbs=update
@@ -75,32 +111,16 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Fetch credentials from secrets through the secretRef
-	// TODO: Ignore not found errors here
-	sec := &corev1.Secret{}
-	if err := r.Get(ctx, types.NamespacedName{Namespace: hs.Namespace, Name: hs.Spec.External.SecretRef.Name}, sec); err != nil {
-		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", hs.Namespace, hs.Spec.External.SecretRef.Name, err))
+	// Don't do anything if no backends are configured
+	if hs.Spec.External == nil && hs.Spec.Internal == nil {
+		return ctrl.Result{}, nil
 	}
 
-	// Parse the URL
-	u, err := url.Parse(hs.Spec.External.URL)
+	// Get harbor clientset
+	cs, err := GetClientSet(ctx, r.Client, hs)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-
-	// Setup Harbor clientset
-	c := &harbor.ClientSetConfig{
-		URL:      u.String(),
-		Insecure: true,
-		Username: string(sec.Data["username"]),
-		Password: string(sec.Data["password"]),
-	}
-
-	cs, err := harbor.NewClientSet(c)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	r.clientset = cs
 
 	// Check status field here

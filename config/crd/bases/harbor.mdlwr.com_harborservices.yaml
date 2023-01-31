@@ -39,14 +39,14 @@ spec:
                 description: Foo is an example field of HarborService. Edit harborservice_types.go
                   to remove/update
                 properties:
-                  secretRef:
-                    properties:
-                      name:
-                        type: string
-                    type: object
-                  url:
+                  host:
                     type: string
+                  port:
+                    format: int32
+                    type: integer
                 type: object
+              insecure:
+                type: boolean
               internalBackend:
                 properties:
                   name:
@@ -65,13 +65,15 @@ spec:
                         format: int32
                         type: integer
                     type: object
-                  secretRef:
-                    properties:
-                      name:
-                        type: string
-                    type: object
                 required:
                 - name
+                type: object
+              scheme:
+                type: string
+              secretRef:
+                properties:
+                  name:
+                    type: string
                 type: object
             type: object
           status:

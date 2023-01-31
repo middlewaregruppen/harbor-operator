@@ -18,6 +18,7 @@ package controllers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -29,6 +30,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -86,6 +88,24 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
+
+	// Don't do anything if no harborservice is defined
+	if len(proj.Spec.Harbor) == 0 {
+		return ctrl.Result{}, nil
+	}
+
+	// Get the HarborService instance
+	hs := &harborv1alpha1.HarborService{}
+	if err := r.Get(ctx, types.NamespacedName{Namespace: proj.Namespace, Name: proj.Spec.Harbor}, hs); err != nil {
+		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find HarborService (%s/%s): %s", proj.Namespace, proj.Spec.Harbor, err))
+	}
+
+	// Get harbor clientset
+	cs, err := GetClientSet(ctx, r.Client, hs)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	r.clientset = cs
 
 	// Check status field here
 	// Let's just set the status as Unknown when no status are available
@@ -203,7 +223,7 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	// If we got this far it means that project exists and we can update project in Harbor instead.,
 	// Note that we always update, overwriting existing project with the state of that in the CRD.
 	// We might want to consider only updating when there are changes.
-	_, err := r.clientset.V2().Project.UpdateProject(context.TODO(), &project.UpdateProjectParams{
+	_, err = r.clientset.V2().Project.UpdateProject(context.TODO(), &project.UpdateProjectParams{
 		Project:         projectReq,
 		ProjectNameOrID: proj.Name,
 	})
@@ -223,16 +243,16 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, err
 	}
 
+	// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
+	if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
+		return ctrl.Result{}, err
+	}
 	// The following implementation will update the status
 	// TODO: We might want to consider putting this into the Ensurer interface
 	meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: ProjectStatusAvailable,
 		Status: metav1.ConditionTrue, Reason: "Reconciling",
 		Message: fmt.Sprintf("Harbor Project for custom resource (%s) created successfully", proj.Name)})
 
-	// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
-	if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
-		return ctrl.Result{}, err
-	}
 	if err := r.Status().Update(ctx, proj); err != nil {
 		l.Error(err, "failed to update Project status")
 		return ctrl.Result{}, err
@@ -242,8 +262,7 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager, clientset *harbor.ClientSet) error {
-	r.clientset = clientset
+func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&harborv1alpha1.Project{}).
 		Complete(r)
