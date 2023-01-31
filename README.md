@@ -11,9 +11,41 @@ You’ll need a Kubernetes cluster to run against. You can use [KIND](https://si
 **Note:** Your controller will automatically use the current context in your kubeconfig file (i.e. whatever cluster `kubectl cluster-info` shows).
 
 ### Running on the cluster
+1. Install CRD's and the controller onto the clusters
 ```sh
 kubectl apply -k config/crd
 kubectl apply -k config/default
+```
+
+2. Create a `HarborService` and a secret holding credentials to your Harbor server
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: harbor.mdlwr.com/v1alpha1
+kind: HarborService
+metadata:
+  name: harbor-default
+spec:
+  insecure: true
+  scheme: https
+  externalBackend:
+    host: harbor.my.company.com
+    port: 443
+  secretRef:
+    name: harbor-credentials
+EOF
+kubectl create secret generic harbor-credentials --from-literal="username=admin" --from-literal="password=Harbor12345"
+```
+
+3. Start creating resources, such as `Project` with a reference to your `HarborService`
+```sh
+cat <<EOF | kubectl apply -f -
+apiVersion: harbor.mdlwr.com/v1alpha1
+kind: Project
+metadata:
+  name: project-01
+spec:
+  harbor: harborservice-sample
+EOF
 ```
 
 ### Running locally (for contributors)
