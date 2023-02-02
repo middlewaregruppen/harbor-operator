@@ -44,7 +44,7 @@ kind: Project
 metadata:
   name: project-01
 spec:
-  harbor: harborservice-sample
+  harbor: harbor-default
 EOF
 ```
 
