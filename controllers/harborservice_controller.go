@@ -186,7 +186,6 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 	}
 
-	l.Info("Checking health")
 	// Check connectivity using the health API
 	ok, err := r.clientset.V2().Health.GetHealth(ctx, health.NewGetHealthParams())
 	if err != nil {

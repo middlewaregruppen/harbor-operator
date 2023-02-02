@@ -25,6 +25,7 @@ import (
 	"github.com/goharbor/go-client/pkg/harbor"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/client/project"
 	"github.com/goharbor/go-client/pkg/sdk/v2.0/models"
+
 	harborv1alpha1 "github.com/middlewaregruppen/harbor-operator/api/v1alpha1"
 	"github.com/middlewaregruppen/harbor-operator/pkg/util"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -55,15 +56,15 @@ type ProjectReconciler struct {
 	clientset *harbor.ClientSet
 }
 
-func (e ProjectReconciler) projectNotFound(ctx context.Context, key string) bool {
-	_, err := e.clientset.V2().Project.HeadProject(context.TODO(), &project.HeadProjectParams{ProjectName: key})
+func (e ProjectReconciler) getProjectId(ctx context.Context, name string) (*int32, error) {
+	projOK, err := e.clientset.V2().Project.ListProjects(ctx, &project.ListProjectsParams{Name: &name})
 	if err != nil {
-		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
-			return true
-		}
-		return true
+		return nil, err
 	}
-	return false
+	if len(projOK.Payload) > 0 {
+		return &projOK.Payload[0].ProjectID, nil
+	}
+	return nil, nil
 }
 
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
@@ -131,6 +132,55 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		}
 	}
 
+	isPublic := true
+	if proj.Spec.IsPrivate {
+		isPublic = false
+	}
+	projectReq := &models.ProjectReq{
+		ProjectName: proj.Name,
+		Metadata: &models.ProjectMetadata{
+			Public: util.BoolToString(isPublic),
+		},
+	}
+
+	// Check if Project exists in Harbor by doing a HEAD requests. If not found, the project is created
+	_, err = r.clientset.V2().Project.HeadProject(ctx, &project.HeadProjectParams{ProjectName: proj.ObjectMeta.Name})
+	if err != nil {
+		if _, notFound := err.(*project.HeadProjectNotFound); notFound {
+			_, err := r.clientset.V2().Project.CreateProject(ctx, &project.CreateProjectParams{Project: projectReq})
+			if err != nil {
+				// Update the status field of the resource in case we get errors creating the project
+				meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: ProjectStatusAvailable,
+					Status: metav1.ConditionFalse, Reason: "Reconciling",
+					Message: fmt.Sprintf("Failed to create Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
+
+				// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
+				if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
+					return ctrl.Result{}, err
+				}
+
+				if err := r.Status().Update(ctx, proj); err != nil {
+					return ctrl.Result{}, err
+				}
+				return ctrl.Result{}, err
+			}
+			// Project was created, re-queue so that we can re-check
+			return ctrl.Result{RequeueAfter: time.Minute}, nil
+		}
+		return ctrl.Result{}, err
+	}
+
+	// We need the project ID. Some Harbor versions don't support using names
+	id, err := r.getProjectId(ctx, proj.Name)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if id == nil {
+		l.Info("COuldn't find the id")
+		return ctrl.Result{}, nil
+	}
+	idstr := fmt.Sprintf("%d", *id)
+
 	// Check if resource is marked to be deleted
 	if proj.GetDeletionTimestamp() != nil {
 		// Perform finalizers before deleting resource from cluster
@@ -148,7 +198,7 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 
 			// TODO: run finalizers here. Always delete resources that belong to this CRD before proceeding further
 			// Delete project from Harbor after finalizers have been carried out
-			_, err := r.clientset.V2().Project.DeleteProject(context.TODO(), &project.DeleteProjectParams{ProjectNameOrID: proj.Name})
+			_, err := r.clientset.V2().Project.DeleteProject(ctx, &project.DeleteProjectParams{ProjectNameOrID: idstr})
 			if nil != err {
 
 				// Update the status field of the resource in case we get errors creating the project
@@ -186,50 +236,16 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return ctrl.Result{}, nil
 	}
 
-	isPublic := true
-	if proj.Spec.IsPrivate {
-		isPublic = false
-	}
-	projectReq := &models.ProjectReq{
-		ProjectName: proj.ObjectMeta.Name,
-		Metadata: &models.ProjectMetadata{
-			Public: util.BoolToString(isPublic),
-		},
-	}
-
-	// Project was not found, lets create it
-	if r.projectNotFound(ctx, proj.Name) {
-		_, err := r.clientset.V2().Project.CreateProject(context.TODO(), &project.CreateProjectParams{Project: projectReq})
-		if err != nil {
-			// Update the status field of the resource in case we get errors creating the project
-			meta.SetStatusCondition(&proj.Status.Conditions, metav1.Condition{Type: ProjectStatusAvailable,
-				Status: metav1.ConditionFalse, Reason: "Reconciling",
-				Message: fmt.Sprintf("Failed to create Harbor project for the custom resource (%s): (%s)", proj.Name, err)})
-
-			// Get the Project resource again so that we don't encounter any "the object has been modified"-errors
-			if err = r.Get(ctx, req.NamespacedName, proj); err != nil {
-				return ctrl.Result{}, err
-			}
-
-			if err := r.Status().Update(ctx, proj); err != nil {
-				return ctrl.Result{}, err
-			}
-			return ctrl.Result{}, err
-		}
-		// Project was created, re-queue so that we can re-check
-		return ctrl.Result{RequeueAfter: time.Minute}, nil
-	}
-
 	// If we got this far it means that project exists and we can update project in Harbor instead.,
 	// Note that we always update, overwriting existing project with the state of that in the CRD.
 	// We might want to consider only updating when there are changes.
 	_, err = r.clientset.V2().Project.UpdateProject(context.TODO(), &project.UpdateProjectParams{
 		Project:         projectReq,
-		ProjectNameOrID: proj.Name,
+		ProjectNameOrID: idstr,
 	})
 	if err != nil {
+		l.Error(err, "Couldn't update project")
 		if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
-			l.Error(err, "Failed to re-fetch memcached")
 			return ctrl.Result{}, err
 		}
 		// Update the status field of the resource in case we get errors creating the project
