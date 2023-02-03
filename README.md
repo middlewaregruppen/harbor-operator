@@ -17,7 +17,12 @@ kubectl apply -k config/crd
 kubectl apply -k config/default
 ```
 
-2. Create a `HarborService` and a secret holding credentials to your Harbor server
+2. Create secret holding credentials to the Harbor server
+```sh
+kubectl create secret generic harbor-credentials --from-literal="username=admin" --from-literal="password=Harbor12345"
+```
+
+2. Create a `HarborService`
 ```sh
 cat <<EOF | kubectl apply -f -
 apiVersion: harbor.mdlwr.com/v1alpha1
@@ -33,7 +38,6 @@ spec:
   secretRef:
     name: harbor-credentials
 EOF
-kubectl create secret generic harbor-credentials --from-literal="username=admin" --from-literal="password=Harbor12345"
 ```
 
 3. Start creating resources, such as `Project` with a reference to your `HarborService`
