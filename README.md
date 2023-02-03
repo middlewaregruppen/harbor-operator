@@ -44,7 +44,7 @@ EOF
 ```sh
 cat <<EOF | kubectl apply -f -
 apiVersion: harbor.mdlwr.com/v1alpha1
-kind: Project
+kind: HarborProject
 metadata:
   name: project-01
 spec:
