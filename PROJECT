@@ -13,7 +13,7 @@ resources:
   controller: true
   domain: mdlwr.com
   group: harbor
-  kind: Project
+  kind: HarborService
   path: github.com/middlewaregruppen/harbor-operator/api/v1alpha1
   version: v1alpha1
 - api:
@@ -22,7 +22,7 @@ resources:
   controller: true
   domain: mdlwr.com
   group: harbor
-  kind: HarborService
+  kind: HarborProject
   path: github.com/middlewaregruppen/harbor-operator/api/v1alpha1
   version: v1alpha1
 version: "3"

@@ -5,20 +5,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.10.0
   creationTimestamp: null
-  name: projects.harbor.mdlwr.com
+  name: harborprojects.harbor.mdlwr.com
 spec:
   group: harbor.mdlwr.com
   names:
-    kind: Project
-    listKind: ProjectList
-    plural: projects
-    singular: project
+    kind: HarborProject
+    listKind: HarborProjectList
+    plural: harborprojects
+    singular: harborproject
   scope: Namespaced
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Project is the Schema for the projects API
+        description: HarborProject is the Schema for the harborprojects API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -33,7 +33,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: ProjectSpec defines the desired state of Project
+            description: HarborProjectSpec defines the desired state of HarborProject
             properties:
               harbor:
                 type: string
@@ -48,7 +48,7 @@ spec:
                 type: object
             type: object
           status:
-            description: ProjectStatus defines the observed state of Project
+            description: HarborProjectStatus defines the observed state of HarborProject
             properties:
               conditions:
                 description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
