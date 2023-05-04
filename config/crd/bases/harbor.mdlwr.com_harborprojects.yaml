@@ -15,7 +15,20 @@ spec:
     singular: harborproject
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.conditions[?(@.type=='Available')].status
+      name: Available
+      type: string
+    - jsonPath: .spec.harbor
+      name: HarborService
+      type: string
+    - jsonPath: .spec.isPrivate
+      name: Private
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: HarborProject is the Schema for the harborprojects API
@@ -38,6 +51,7 @@ spec:
               harbor:
                 type: string
               isPrivate:
+                default: false
                 description: 'INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
                   Important: Run "make" to regenerate code after modifying this file'
                 type: boolean

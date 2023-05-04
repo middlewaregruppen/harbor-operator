@@ -27,7 +27,8 @@ import (
 type HarborProjectSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
-	IsPrivate      bool            `json:"isPrivate,omitempty"`
+	//+kubebuilder:default=false
+	IsPrivate      *bool           `json:"isPrivate,omitempty"`
 	ProxyCacheSpec *ProxyCacheSpec `json:"proxyCache,omitempty"`
 	Harbor         string          `json:"harbor,omitempty"`
 }
@@ -43,10 +44,13 @@ type ProxyCacheSpec struct {
 	Registry string `json:"registry,omitempty"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-
 // HarborProject is the Schema for the harborprojects API
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Available",type="string",JSONPath=".status.conditions[?(@.type=='Available')].status"
+// +kubebuilder:printcolumn:name="HarborService",type="string",JSONPath=".spec.harbor"
+// +kubebuilder:printcolumn:name="Private",type="string",JSONPath=".spec.isPrivate"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type HarborProject struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

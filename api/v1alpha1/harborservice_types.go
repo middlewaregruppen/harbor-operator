@@ -30,11 +30,13 @@ type HarborServiceSpec struct {
 	// Important: Run "make" to regenerate code after modifying this file
 
 	// Foo is an example field of HarborService. Edit harborservice_types.go to remove/update
-	External  *ExternalBackend `json:"externalBackend,omitempty"`
-	Internal  *InternalBackend `json:"internalBackend,omitempty"`
-	Insecure  bool             `json:"insecure,omitempty"`
-	Scheme    string           `json:"scheme,omitempty"`
-	SecretRef *SecretRef       `json:"secretRef,omitempty"`
+	External *ExternalBackend `json:"externalBackend,omitempty"`
+	Internal *InternalBackend `json:"internalBackend,omitempty"`
+	// +kubebuilder:default=false
+	Insecure bool `json:"insecure,omitempty"`
+	// +kubebuilder:default=https
+	Scheme    string     `json:"scheme,omitempty"`
+	SecretRef *SecretRef `json:"secretRef,omitempty"`
 }
 
 type ExternalBackend struct {
@@ -58,10 +60,11 @@ type HarborServiceStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty" patchStrategy:"merge" patchMergeKey:"type" protobuf:"bytes,1,rep,name=conditions"`
 }
 
-//+kubebuilder:object:root=true
-//+kubebuilder:subresource:status
-
 // HarborService is the Schema for the harborservices API
+// +kubebuilder:object:root=true
+// +kubebuilder:subresource:status
+// +kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.conditions[?(@.type=='Ready')].status"
+// +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 type HarborService struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
