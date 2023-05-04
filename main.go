@@ -18,6 +18,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"os"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
@@ -37,8 +38,16 @@ import (
 )
 
 var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
+	// VERSION of the app. Is set when project is built and should never be set manually
+	VERSION string
+	// COMMIT is the Git commit currently used when compiling. Is set when project is built and should never be set manually
+	COMMIT string
+	// BRANCH is the Git branch currently used when compiling. Is set when project is built and should never be set manually
+	BRANCH string
+	// GOVERSION used to compile. Is set when project is built and should never be set manually
+	GOVERSION string
+	scheme    = runtime.NewScheme()
+	setupLog  = ctrl.Log.WithName("setup")
 )
 
 func init() {
@@ -61,7 +70,13 @@ func main() {
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
+	showver := flag.Bool("version", false, "Print version")
 	flag.Parse()
+
+	if *showver {
+		fmt.Printf("Version: %s\nCommit: %s\nBranch: %s\nGoVersion: %s\n", VERSION, COMMIT, BRANCH, GOVERSION)
+		return
+	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
