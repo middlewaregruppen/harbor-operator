@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -42,7 +41,7 @@ const (
 	// HarborAvailable
 	HarborStatusReady = "Ready"
 	// HarborStatusNotReady
-	HarborStatusNotReady = "NotReady"
+	// HarborStatusNotReady = "NotReady"
 )
 
 // HarborServiceReconciler reconciles a HarborService object
@@ -58,7 +57,7 @@ func GetClientSet(ctx context.Context, c client.Client, h *harborv1alpha1.Harbor
 	// TODO: Ignore not found errors here
 	sec := &corev1.Secret{}
 	if err := c.Get(ctx, types.NamespacedName{Namespace: h.Namespace, Name: h.Spec.SecretRef.Name}, sec); err != nil {
-		return nil, errors.New(fmt.Sprintf("couldn't find secret (%s/%s): %s", h.Namespace, h.Spec.SecretRef.Name, err))
+		return nil, fmt.Errorf("couldn't find secret (%s/%s): %s", h.Namespace, h.Spec.SecretRef.Name, err)
 	}
 
 	var ustr string
@@ -102,7 +101,7 @@ func GetClientSet(ctx context.Context, c client.Client, h *harborv1alpha1.Harbor
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
 func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	l := log.FromContext(ctx)
+	_ = log.FromContext(ctx)
 
 	// Fetch HarborService - This ensures that the cluster has resources of type HarborService.
 	// Stops reconciliation if not found, for example if the CRD's has not been applied
@@ -126,13 +125,15 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Check status field here
 	// Let's just set the status as Unknown when no status are available
 	if hs.Status.Conditions == nil || len(hs.Status.Conditions) == 0 {
-		meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusNotReady, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
+		meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusReady, Status: metav1.ConditionUnknown, Reason: "Reconciling", Message: "Starting reconciliation"})
 		if err := r.Status().Update(ctx, hs); err != nil {
 			return ctrl.Result{}, err
 		}
-
 		// Get the HarborService resource again so that we don't encounter any "the object has been modified"-errors
 		if err := r.Get(ctx, req.NamespacedName, hs); err != nil {
+			return ctrl.Result{}, err
+		}
+		if err := r.Update(ctx, hs); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -152,9 +153,9 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		if controllerutil.ContainsFinalizer(hs, projectFinalizers) {
 
 			// Add Degraded status to begin the process of terminating resources
-			meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusNotReady,
-				Status: metav1.ConditionUnknown, Reason: "Finalizing",
-				Message: fmt.Sprintf("Performing finalizer operations for the custom resource: %s ", hs.Name)})
+			meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusReady,
+				Status: metav1.ConditionFalse, Reason: "Finalizing",
+				Message: fmt.Sprintf("Performing finalizer operations for: %s ", hs.Name)})
 
 			// Update the resource with updated status
 			if err := r.Status().Update(ctx, hs); err != nil {
@@ -164,17 +165,17 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			// TODO: run finalizers here. Always delete resources that belong to this CRD before proceeding further
 
 			// Get the resource again so that we don't encounter any "the object has been modified"-errors
-			if err := r.Get(ctx, req.NamespacedName, hs); err != nil {
-				return ctrl.Result{}, err
-			}
+			// if err := r.Get(ctx, req.NamespacedName, hs); err != nil {
+			// 	return ctrl.Result{}, err
+			// }
 
-			meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusNotReady,
-				Status: metav1.ConditionTrue, Reason: "Finalizing",
-				Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", hs.Name)})
+			// meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusReady,
+			// 	Status: metav1.ConditionFalse, Reason: "Finalizing",
+			// 	Message: fmt.Sprintf("Finalizer operations for custom resource %s name were successfully accomplished", hs.Name)})
 
-			if err := r.Status().Update(ctx, hs); err != nil {
-				return ctrl.Result{}, err
-			}
+			// if err := r.Status().Update(ctx, hs); err != nil {
+			// 	return ctrl.Result{}, err
+			// }
 
 			// Remove finalizers and update status field of the resource
 			if ok := controllerutil.RemoveFinalizer(hs, projectFinalizers); !ok {
@@ -184,14 +185,14 @@ func (r *HarborServiceReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 				return ctrl.Result{}, err
 			}
 		}
+		return ctrl.Result{}, nil
 	}
 
 	// Check connectivity using the health API
 	ok, err := r.clientset.V2().Health.GetHealth(ctx, health.NewGetHealthParams())
 	if err != nil {
-		l.Error(err, "failed checking health of harbor")
 		// Update the status field of the resource in case we get errors checking the health
-		meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusNotReady,
+		meta.SetStatusCondition(&hs.Status.Conditions, metav1.Condition{Type: HarborStatusReady,
 			Status: metav1.ConditionFalse, Reason: "Reconciling",
 			Message: fmt.Sprintf("failed getting health of Harbor for the custom resource (%s): (%s)", hs.Name, err)})
 

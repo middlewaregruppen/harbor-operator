@@ -18,7 +18,6 @@ package controllers
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -98,7 +97,7 @@ func (r *HarborProjectReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	// Get the HarborService instance
 	hs := &harborv1alpha1.HarborService{}
 	if err := r.Get(ctx, types.NamespacedName{Namespace: proj.Namespace, Name: proj.Spec.Harbor}, hs); err != nil {
-		return ctrl.Result{}, errors.New(fmt.Sprintf("couldn't find HarborService (%s/%s): %s", proj.Namespace, proj.Spec.Harbor, err))
+		return ctrl.Result{}, fmt.Errorf("couldn't find HarborService (%s/%s): %s", proj.Namespace, proj.Spec.Harbor, err)
 	}
 
 	// Get harbor clientset
@@ -133,7 +132,7 @@ func (r *HarborProjectReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 	}
 
 	isPublic := true
-	if proj.Spec.IsPrivate {
+	if proj.Spec.IsPrivate != nil && *proj.Spec.IsPrivate {
 		isPublic = false
 	}
 	projectReq := &models.ProjectReq{
