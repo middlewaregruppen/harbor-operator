@@ -38,7 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Definitions to manage status conditions
+// // Definitions to manage status conditions
 const (
 	// ProjectStatusAvailable represents the status of the Deployment reconciliation
 	ProjectStatusAvailable = "Available"
@@ -48,15 +48,15 @@ const (
 
 const projectFinalizers = "harbor.mdlwr.com/finalizer"
 
-// ProjectReconciler reconciles a Project object
-type ProjectReconciler struct {
+// HarborProjectReconciler reconciles a HarborProject object
+type HarborProjectReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
 	// clientSet is the Harbor ClientSet
 	clientset *harbor.ClientSet
 }
 
-func (e ProjectReconciler) getProjectId(ctx context.Context, name string) (*int32, error) {
+func (e HarborProjectReconciler) getProjectId(ctx context.Context, name string) (*int32, error) {
 	projOK, err := e.clientset.V2().Project.ListProjects(ctx, &project.ListProjectsParams{Name: &name})
 	if err != nil {
 		return nil, err
@@ -67,25 +67,25 @@ func (e ProjectReconciler) getProjectId(ctx context.Context, name string) (*int3
 	return nil, nil
 }
 
-//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=projects/finalizers,verbs=update
+//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects/status,verbs=get;update;patch
+//+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects/finalizers,verbs=update
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
 // TODO(user): Modify the Reconcile function to compare the state specified by
-// the Project object against the actual cluster state, and then
+// the HarborProject object against the actual cluster state, and then
 // perform operations to make the cluster state reflect the state specified by
 // the user.
 //
 // For more details, check Reconcile and its Result here:
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.13.0/pkg/reconcile
-func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *HarborProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
 
 	// Fetch Project - This ensures that the cluster has resources of type Project.
 	// Stops reconciliation if not found, for example if the CRD's has not been applied
-	proj := &harborv1alpha1.Project{}
+	proj := &harborv1alpha1.HarborProject{}
 	if err := r.Get(ctx, req.NamespacedName, proj); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
@@ -278,8 +278,8 @@ func (r *ProjectReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *ProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *HarborProjectReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&harborv1alpha1.Project{}).
+		For(&harborv1alpha1.HarborProject{}).
 		Complete(r)
 }

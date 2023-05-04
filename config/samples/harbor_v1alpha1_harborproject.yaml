@@ -1,12 +1,12 @@
 apiVersion: harbor.mdlwr.com/v1alpha1
-kind: Project
+kind: HarborProject
 metadata:
   labels:
-    app.kubernetes.io/name: project
-    app.kubernetes.io/instance: project-sample
+    app.kubernetes.io/name: harborproject
+    app.kubernetes.io/instance: harborproject-sample
     app.kubernetes.io/part-of: harbor-operator
     app.kubernetes.io/managed-by: kustomize
     app.kubernetes.io/created-by: harbor-operator
-  name: project-sample
+  name: harborproject-sample
 spec:
   # TODO(user): Add fields here
