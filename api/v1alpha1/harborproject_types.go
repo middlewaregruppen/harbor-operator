@@ -23,14 +23,27 @@ import (
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
+type CVEAllowlistSpec struct {
+	// +kubebuilder:validation:Optional
+	Expiration *metav1.Time `json:"expiration,omitempty"`
+	// +kubebuilder:validation:MinItems=1
+	Items []CVEAllowlistItem `json:"items,omitempty"`
+}
+
+type CVEAllowlistItem struct {
+	// +kubebuilder:validation:Pattern=`^CVE-\d{4}-\d+$`
+	CVEID string `json:"cveId,omitempty"`
+}
+
 // HarborProjectSpec defines the desired state of HarborProject
 type HarborProjectSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 	//+kubebuilder:default=false
-	IsPrivate      *bool           `json:"isPrivate,omitempty"`
-	ProxyCacheSpec *ProxyCacheSpec `json:"proxyCache,omitempty"`
-	Harbor         string          `json:"harbor,omitempty"`
+	IsPrivate      *bool             `json:"isPrivate,omitempty"`
+	ProxyCacheSpec *ProxyCacheSpec   `json:"proxyCache,omitempty"`
+	Harbor         string            `json:"harbor,omitempty"`
+	CVEAllowlist   *CVEAllowlistSpec `json:"cveAllowlist,omitempty"`
 }
 
 // HarborProjectStatus defines the observed state of HarborProject
