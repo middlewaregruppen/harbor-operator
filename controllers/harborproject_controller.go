@@ -66,6 +66,25 @@ func (e HarborProjectReconciler) getProjectId(ctx context.Context, name string) 
 	return nil, nil
 }
 
+func (e HarborProjectReconciler) toCVEAllowlistModel(cveAllowlist *harborv1alpha1.CVEAllowlistSpec) *models.CVEAllowlist {
+	if cveAllowlist == nil {
+		return nil
+	}
+	l := &models.CVEAllowlist{
+		Items: make([]*models.CVEAllowlistItem, 0, len(cveAllowlist.Items)),
+	}
+	if cveAllowlist.Expiration != nil {
+		expiresAt := cveAllowlist.Expiration.Unix()
+		l.ExpiresAt = &expiresAt
+	}
+	for _, item := range cveAllowlist.Items {
+		l.Items = append(l.Items, &models.CVEAllowlistItem{
+			CVEID: item.CVEID,
+		})
+	}
+	return l
+}
+
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=harbor.mdlwr.com,resources=harborprojects/finalizers,verbs=update
@@ -136,7 +155,8 @@ func (r *HarborProjectReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		isPublic = false
 	}
 	projectReq := &models.ProjectReq{
-		ProjectName: proj.Name,
+		CVEAllowlist: r.toCVEAllowlistModel(proj.Spec.CVEAllowlist),
+		ProjectName:  proj.Name,
 		Metadata: &models.ProjectMetadata{
 			Public: util.BoolToString(isPublic),
 		},
